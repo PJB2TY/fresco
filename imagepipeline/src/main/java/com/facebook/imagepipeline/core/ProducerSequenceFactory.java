@@ -18,7 +18,9 @@ import static com.facebook.imagepipeline.common.SourceUriType.SOURCE_TYPE_QUALIF
 
 import android.content.ContentResolver;
 import android.net.Uri;
+import android.os.Build;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.VisibleForTesting;
 import com.facebook.common.internal.Preconditions;
 import com.facebook.common.media.MediaUtils;
@@ -72,7 +74,6 @@ public class ProducerSequenceFactory {
   private final ImageTranscoderFactory mImageTranscoderFactory;
   private final boolean mIsEncodedMemoryCacheProbingEnabled;
   private final boolean mIsDiskCacheProbingEnabled;
-  private final boolean mUseCombinedNetworkAndCacheProducer;
   private final boolean mAllowDelay;
 
   // Saved sequences
@@ -118,6 +119,9 @@ public class ProducerSequenceFactory {
   @VisibleForTesting @Nullable Producer<CloseableReference<CloseableImage>> mDataFetchSequence;
 
   @VisibleForTesting @Nullable
+  Producer<CloseableReference<CloseableImage>> mLocalThumbnailBitmapFetchSequence;
+
+  @VisibleForTesting @Nullable
   Producer<CloseableReference<CloseableImage>> mQualifiedResourceFetchSequence;
 
   @VisibleForTesting
@@ -146,14 +150,12 @@ public class ProducerSequenceFactory {
       ImageTranscoderFactory imageTranscoderFactory,
       boolean isEncodedMemoryCacheProbingEnabled,
       boolean isDiskCacheProbingEnabled,
-      boolean useCombinedNetworkAndCacheProducer,
       boolean allowDelay) {
     mContentResolver = contentResolver;
     mProducerFactory = producerFactory;
     mNetworkFetcher = networkFetcher;
     mResizeAndRotateEnabledForNetwork = resizeAndRotateEnabledForNetwork;
     mWebpSupportEnabled = webpSupportEnabled;
-    mUseCombinedNetworkAndCacheProducer = useCombinedNetworkAndCacheProducer;
     mPostprocessorSequences = new HashMap<>();
     mCloseableImagePrefetchSequences = new HashMap<>();
     mBitmapPrepareSequences = new HashMap<>();
@@ -389,7 +391,10 @@ public class ProducerSequenceFactory {
         case SOURCE_TYPE_LOCAL_IMAGE_FILE:
           return getLocalImageFileFetchSequence();
         case SOURCE_TYPE_LOCAL_CONTENT:
-          if (MediaUtils.isVideo(mContentResolver.getType(uri))) {
+          if (imageRequest.getLoadThumbnailOnly()
+              && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return getLocalContentUriThumbnailFetchSequence();
+          } else if (MediaUtils.isVideo(mContentResolver.getType(uri))) {
             return getLocalVideoFileFetchSequence();
           }
           return getLocalContentUriFetchSequence();
@@ -508,10 +513,8 @@ public class ProducerSequenceFactory {
       }
       Producer<EncodedImage> inputProducer =
           Preconditions.checkNotNull(
-              mUseCombinedNetworkAndCacheProducer
-                  ? mProducerFactory.newCombinedNetworkAndCacheProducer(mNetworkFetcher)
-                  : newEncodedCacheMultiplexToTranscodeSequence(
-                      mProducerFactory.newNetworkFetchProducer(mNetworkFetcher)));
+              newEncodedCacheMultiplexToTranscodeSequence(
+                  mProducerFactory.newNetworkFetchProducer(mNetworkFetcher)));
       mCommonNetworkFetchToEncodedMemorySequence =
           ProducerFactory.newAddImageTransformMetaDataProducer(inputProducer);
 
@@ -673,6 +676,21 @@ public class ProducerSequenceFactory {
               localContentUriFetchProducer, thumbnailProducers);
     }
     return mLocalContentUriFetchSequence;
+  }
+
+  /**
+   * bitmap cache get -> background thread hand-off -> multiplex -> bitmap cache -> local thumbnail
+   * bitmap
+   */
+  @RequiresApi(Build.VERSION_CODES.Q)
+  private synchronized Producer<CloseableReference<CloseableImage>>
+      getLocalContentUriThumbnailFetchSequence() {
+    if (mLocalThumbnailBitmapFetchSequence == null) {
+      mLocalThumbnailBitmapFetchSequence =
+          newBitmapCacheGetToBitmapCacheSequence(
+              mProducerFactory.newLocalThumbnailBitmapProducer());
+    }
+    return mLocalThumbnailBitmapFetchSequence;
   }
 
   /**

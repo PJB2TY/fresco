@@ -690,12 +690,15 @@ public abstract class AbstractDraweeController<T, INFO>
       mDataSource = null;
       mHasFetchFailed = true;
       // Set the previously available image if available.
-      if (mRetainImageOnFailure && mDrawable != null) {
-        mSettableDraweeHierarchy.setImage(mDrawable, 1f, true);
-      } else if (shouldRetryOnTap()) {
-        mSettableDraweeHierarchy.setRetry(throwable);
-      } else {
-        mSettableDraweeHierarchy.setFailure(throwable);
+      final SettableDraweeHierarchy hierarchy = mSettableDraweeHierarchy;
+      if (hierarchy != null) {
+        if (mRetainImageOnFailure && mDrawable != null) {
+          hierarchy.setImage(mDrawable, 1f, true);
+        } else if (shouldRetryOnTap()) {
+          hierarchy.setRetry(throwable);
+        } else {
+          hierarchy.setFailure(throwable);
+        }
       }
       reportFailure(throwable, dataSource);
       // IMPORTANT: do not execute any instance-specific code after this point
@@ -839,11 +842,10 @@ public abstract class AbstractDraweeController<T, INFO>
       @Nullable Uri mainUri) {
     String scaleType = null;
     PointF focusPoint = null;
-    if (mSettableDraweeHierarchy instanceof GenericDraweeHierarchy) {
-      scaleType =
-          String.valueOf(
-              ((GenericDraweeHierarchy) mSettableDraweeHierarchy).getActualImageScaleType());
-      focusPoint = ((GenericDraweeHierarchy) mSettableDraweeHierarchy).getActualImageFocusPoint();
+    final SettableDraweeHierarchy hierarchy = mSettableDraweeHierarchy;
+    if (hierarchy instanceof GenericDraweeHierarchy) {
+      scaleType = String.valueOf(((GenericDraweeHierarchy) hierarchy).getActualImageScaleType());
+      focusPoint = ((GenericDraweeHierarchy) hierarchy).getActualImageFocusPoint();
     }
     return MiddlewareUtils.obtainExtras(
         COMPONENT_EXTRAS,

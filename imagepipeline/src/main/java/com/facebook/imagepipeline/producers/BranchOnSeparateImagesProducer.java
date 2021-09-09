@@ -58,7 +58,7 @@ public class BranchOnSeparateImagesProducer implements Producer<EncodedImage> {
           getConsumer().onNewResult(newResult, alteredStatus);
         }
       }
-      if (isLast && !isGoodEnough) {
+      if (isLast && !isGoodEnough && !request.getLoadThumbnailOnly()) {
         EncodedImage.closeSafely(newResult);
 
         mInputProducer2.produceResults(getConsumer(), mProducerContext);
@@ -66,7 +66,7 @@ public class BranchOnSeparateImagesProducer implements Producer<EncodedImage> {
     }
 
     @Override
-    protected void onFailureImpl(Throwable t) {
+    protected void onFailureImpl(@Nullable Throwable t) {
       mInputProducer2.produceResults(getConsumer(), mProducerContext);
     }
   }
